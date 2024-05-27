@@ -1,0 +1,1269 @@
+---
+title: Optuna
+jupyter:
+  jupytext:
+    formats: 'ipynb,py:light,qmd'
+    text_representation:
+      extension: .qmd
+      format_name: quarto
+      format_version: '1.0'
+      jupytext_version: 1.16.2
+  kernelspec:
+    display_name: Python 3 (ipykernel)
+    language: python
+    name: python3
+---
+
+```{python}
+%reload_ext jupyter_ai
+%load_ext jupyter_ai_magics
+```
+
+```{python}
+# %ai chatgpt --format code
+# The best regression for a pandas dataframe
+```
+
+```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
+#| executionInfo: {elapsed: 14607, status: ok, timestamp: 1715686115731, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
+#!pip install pandas numpy matplotlib xgboost scikit-learn tqdm
+```
+
+```{python}
+!pip install scikit-learn 
+```
+
+
+* https://optuna.org/
+* https://practicaldatascience.co.uk/machine-learning/how-to-tune-an-xgbregressor-model-with-optuna
+* https://practicaldatascience.co.uk/machine-learning/how-to-use-optuna-for-xgboost-hyperparameter-tuning
+* https://medium.com/optuna/using-optuna-to-optimize-xgboost-hyperparameters-63bfcdfd3407
+* https://randomrealizations.com/posts/xgboost-parameter-tuning-with-optuna/
+
+
+```{python}
+! pip install optuna optuna-dashboard --quiet
+```
+
+```{python}
+OPTUNA_DB = "sqlite:///optuna.sqlite3"
+get_ipython().system_raw(f"optuna-dashboard {OPTUNA_DB} &")
+```
+
+## MLFlow
+* https://www.kaggle.com/code/sharanharsoor/mlflow-end-to-end-ml-models
+
+```{python}
+!pip install mlflow 'mxnet<=1.9.1' --quiet
+!pip install pyngrok --quiet
+get_ipython().system_raw("mlflow ui --port 5555 &")
+```
+
+```{python}
+import mlflow
+
+mlflow.autolog()
+mlflow.lightgbm.autolog()
+mlflow.xgboost.autolog()
+# mlflow.gluon.autolog()
+```
+
+# Weight and Biases
+* https://colab.research.google.com/github/wandb/examples/blob/master/colabs/boosting/Credit_Scorecards_with_XGBoost_and_W%26B.ipynb#scrollTo=agAgfdIeuPdXj
+
+```{python}
+!pip install --upgrade -q wandb
+```
+
+```{python}
+import wandb
+WANDB_PROJECT = "intive-interstellar-sales-showdown"
+```
+
+```{python}
+try:
+    from kaggle_secrets import UserSecretsClient
+
+    client = UserSecretsClient()
+    wandb.login(wandb_api=client.get_secret("wandb_api"))
+except ModuleNotFoundError:
+    print("Falling back to environmenet variable")
+    wandb.login()
+```
+
+# Autogluon
+* https://auto.gluon.ai/stable/tutorials/tabular/tabular-feature-engineering.html
+* https://auto.gluon.ai/stable/tutorials/tabular/advanced/index.html
+
+```{python}
+#| _kg_hide-output: true
+#| colab: {base_uri: 'https://localhost:8080/'}
+#| executionInfo: {elapsed: 33805, status: ok, timestamp: 1715657226953, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
+!pip install -U autogluon ipywidgets
+# !pip uninstall lightgbm -y
+# !pip install lightgbm --install-option=--gpu
+```
+
+```{python}
+from autogluon.tabular import TabularDataset, TabularPredictor
+from autogluon.features.generators import AutoMLPipelineFeatureGenerator
+```
+
+# Links
+ * https://scikit-learn.org/stable/modules/generated/sklearn.metrics.mean_absolute_error.html
+ * https://scikit-learn.org/stable/modules/cross_validation.html#computing-cross-validated-metrics
+
+```{python}
+import datetime
+import pickle
+import warnings
+from dataclasses import dataclass
+from datetime import date
+from getpass import getpass
+from pathlib import Path
+```
+
+```{python}
+import lightgbm
+import lightgbm as lgbm
+import mlflow
+import mlflow.lightgbm
+import mlflow.xgboost
+import numpy as np
+import optuna
+import optuna.visualization as ov
+import pandas as pd
+import xgboost
+import xgboost as xgb
+from numpy import mean, std
+from optuna.visualization import plot_intermediate_values
+from pandas import read_csv
+from pyngrok import ngrok
+from sklearn.datasets import make_classification
+from sklearn.decomposition import PCA, TruncatedSVD
+from sklearn.feature_selection import RFE
+from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.metrics import confusion_matrix, mean_absolute_error, mean_squared_error
+from sklearn.model_selection import (
+    RepeatedKFold,
+    RepeatedStratifiedKFold,
+    cross_val_score,
+    train_test_split,
+)
+from sklearn.pipeline import FeatureUnion, Pipeline
+from sklearn.preprocessing import (
+    KBinsDiscretizer,
+    LabelEncoder,
+    MinMaxScaler,
+    QuantileTransformer,
+    RobustScaler,
+    StandardScaler,
+)
+from sklearnex import patch_sklearn
+
+patch_sklearn()
+```
+
+```{python}
+#| colab: {base_uri: 'https://localhost:8080/', height: 373}
+#| executionInfo: {elapsed: 929, status: error, timestamp: 1715686147921, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
+dataset_name = "original"
+output_path = "."
+# test_path = '/kaggle/input/dataset/test.csv'
+# train_path = '/kaggle/input/dataset/train.csv'
+test_path = f"{dataset_name}_test.csv"
+train_path = f"{dataset_name}_train.csv"
+test_csv = pd.read_csv(test_path)
+train_csv = pd.read_csv(train_path)
+# sample_submission = pd.read_csv('sample_submission.csv')
+train_csv
+```
+
+```{python}
+results = pd.DataFrame(columns=["dataset", "method", "variant", "rmse", "mse", "mae", "timestamp"])
+results
+```
+
+```{python}
+#| colab: {base_uri: 'https://localhost:8080/', height: 141}
+#| executionInfo: {elapsed: 6, status: error, timestamp: 1715686148819, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
+train_csv
+```
+
+```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
+#| executionInfo: {elapsed: 10, status: ok, timestamp: 1715652495729, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
+train_csv.columns
+```
+
+```{python}
+#| colab: {base_uri: 'https://localhost:8080/', height: 444}
+#| executionInfo: {elapsed: 8, status: ok, timestamp: 1715652495729, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
+test_csv
+```
+
+```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
+#| executionInfo: {elapsed: 7, status: ok, timestamp: 1715652495729, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
+all_features = list(test_csv.columns)
+test_csv.columns
+```
+
+```{python}
+patch_sklearn()
+
+warnings.filterwarnings(
+    action="ignore",
+    message=".*Could not infer format.*",
+)
+
+warnings.filterwarnings(
+    action="ignore",
+    message=".*autologging encountered a warning.*",
+)
+
+warnings.filterwarnings(
+    action="ignore",
+    message=".*No visible GPU is found.*",
+)
+warnings.filterwarnings(
+    action="ignore",
+    message=".*deprecated binary model.*",
+)
+
+
+def load_numeric(file, datetime_to_numeric=True):
+    csv = pd.read_csv(file)
+
+    csv["created_date"] = pd.to_datetime(csv["created_date"])
+    csv["refitted_date"] = pd.to_datetime(csv["refitted_date"])
+    csv["refitted_date"] = csv["refitted_date"].fillna(csv["created_date"])
+
+    csv["sale_date"] = pd.to_datetime(csv["sale_date"])
+    age_baseline = max(
+        csv["created_date"].max(), csv["refitted_date"].max(), csv["sale_date"].max()
+    )
+
+    calculate_age = (
+        lambda x: age_baseline.year
+        - x.year
+        - ((age_baseline.month, age_baseline.day) < (x.month, x.day))
+    )
+    csv["created_age"] = csv["created_date"].apply(calculate_age)
+    csv["refitted_age"] = csv["refitted_date"].apply(calculate_age)
+    csv["sale_age"] = csv["sale_date"].apply(calculate_age)
+
+    if datetime_to_numeric:
+        csv["created_date"] = pd.to_numeric(csv["created_date"])
+        csv["refitted_date"] = pd.to_numeric(csv["refitted_date"])
+        csv["sale_date"] = pd.to_numeric(csv["sale_date"])
+    print(csv.select_dtypes(include=["object"]).dtypes)
+    return csv
+
+
+def load_train(datetime_to_numeric=True):
+    return load_numeric(train_path, datetime_to_numeric=datetime_to_numeric)
+
+
+def load_test(datetime_to_numeric=True):
+    return load_numeric(test_path, datetime_to_numeric=datetime_to_numeric)
+
+
+def store_submission(alias, test_data, model=None):
+    now = datetime.datetime.now().replace(microsecond=0).isoformat().replace(":", "")
+    submissions = Path(output_path) / "submissions"
+    submissions.mkdir(exist_ok=True)
+    filename = f"{submissions}/{now}_{alias}_{dataset_name}_submission"
+    if "id" not in test_data.columns:
+        test_data["id"] = pd.read_csv("test.csv")["id"]
+    test_data[["id", "price"]].to_csv(f"{filename}.csv", index=False)
+
+    if model is not None:
+        model_path = f"{filename}.pkl"
+        pickle.dump(model, open(model_path, "wb"))
+
+
+def predict_and_store(alias, model, test_x):
+    test_data = load_test()
+    test_data["price"] = model.predict(test_x)
+    store_submission(alias, test_data, model)
+    return test_data
+
+
+@dataclass
+class LocalDataset:
+    X: pd.DataFrame
+    y: pd.DataFrame
+    X_train: pd.DataFrame
+    X_test: pd.DataFrame
+    y_train: pd.DataFrame
+    y_test: pd.DataFrame
+    test_data: pd.DataFrame
+    train_data: pd.DataFrame
+    features: list
+
+
+@dataclass
+class ModelTrain:
+    X = None
+    y = None
+    X_train = None
+    X_test = None
+    y_train = None
+    y_test = None
+    features = None
+    model = None
+
+
+def load_split(
+    datetime_to_numeric=True,
+    test_size=0.2,
+    features=None,
+    drop=None,
+    standard_scaler=True,
+):
+    train_data = load_train(datetime_to_numeric=datetime_to_numeric)
+    test_data = load_test(datetime_to_numeric=datetime_to_numeric)
+
+    df = train_data
+    X = df.drop(["price"], axis=1)
+    if drop is not None:
+        X = df.drop(drop, axis=1)
+        test_data = test_data.drop(drop, axis=1)
+    if features is None:
+        features = list(X.columns)
+    else:
+        X = X[features]
+        test_data = test_data[features]
+        print(f"Keeping features {features}")
+    y = df["price"]
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=test_size, random_state=1
+    )
+
+    X_train = pd.DataFrame(X_train, columns=X.columns)
+    X_test = pd.DataFrame(X_test, columns=X.columns)
+    test_data = pd.DataFrame(test_data, columns=X.columns)
+    train_data = pd.DataFrame(train_data[X.columns], columns=X.columns)
+    if standard_scaler:
+        scaler = StandardScaler()
+        X_train = pd.DataFrame(scaler.fit_transform(X_train), columns=X.columns)
+        X_test = pd.DataFrame(scaler.transform(X_test), columns=X.columns)
+        test_data = pd.DataFrame(scaler.transform(test_data), columns=X.columns)
+        train_data = pd.DataFrame(
+            scaler.transform(train_data[X.columns]), columns=X.columns
+        )
+    train_data["price"] = y
+
+    return LocalDataset(
+        X, y, X_train, X_test, y_train, y_test, test_data, train_data, features
+    )
+
+
+def calculate_metrics(ld: LocalDataset, model, method, variant="", y_pred=None):
+    if y_pred is None:
+        y_pred = model.predict(ld.X_test)
+    now = datetime.datetime.now().replace(microsecond=0).isoformat().replace(":", "")
+    print("MSE: ", mean_squared_error(ld.y_test, y_pred))
+    print("RMSE: ", np.sqrt(mean_squared_error(ld.y_test, y_pred)))
+    print("MAE: ", mean_absolute_error(ld.y_test, y_pred))
+    metrics = {
+        "rmse": np.sqrt(mean_squared_error(ld.y_test, y_pred)),
+        "mse": mean_squared_error(ld.y_test, y_pred),
+        "mae": mean_absolute_error(ld.y_test, y_pred),
+    }
+    results.loc[len(results) + 1] = {
+        "dataset": dataset_name,
+        "method": method,
+        "variant": variant,
+        "rmse": np.sqrt(mean_squared_error(ld.y_test, y_pred)),
+        "mse": mean_squared_error(ld.y_test, y_pred),
+        "mae": mean_absolute_error(ld.y_test, y_pred),
+        "timestamp": now
+    }
+    mlflow.log_metrics(metrics)
+    results.to_csv(f"results.csv", index=False)
+    return results.sort_values(by="rmse")
+
+
+_ = load_split()
+```
+
+# Sample code
+
+```{python}
+def execute_sample_code(features=["cabins", "decks", "bathrooms", "radar"], variant=""):
+    import numpy as np
+    import pandas as pd
+    from sklearn.linear_model import LinearRegression
+    from sklearn.metrics import mean_absolute_error, mean_squared_error
+
+    with mlflow.start_run(
+        run_name=f"linear-{variant}",
+        tags={"version": "v1", "library": "sklearn", "optimization": "n/a"},
+        description="sklearn",
+    ):
+        # load training and test data
+        ld = load_split(features=features)
+        train_data = ld.X_train
+        # choose 4 features and price as training target
+        # features = ['cabins', 'decks', 'bathrooms', 'radar']
+        # train_x = train_data[features]
+        # train_y = ld.y_train
+
+        # simple linear regression model
+        # price = a * cabins + b * decs + c * bathrooms + d * radar + e
+        model = LinearRegression().fit(ld.X_train, ld.y_train)
+
+        # predict price on test data
+        # test_x = ld.test_data[features]
+        # test_data = predict_and_store('linear_regression', model, test_x)
+
+        # y_pred = model.predict(ld.X_test)
+        # print('MSE: ', mean_squared_error(ld.y_test, y_pred))
+        # print('RMSE: ', np.sqrt(mean_squared_error(ld.y_test, y_pred)))
+        # print('MAE: ', np.sqrt(mean_absolute_error(ld.y_test, y_pred)))
+        calculate_metrics(ld, model, method="linear", variant=variant)
+
+        # mlflow.sklearn.log_model(sk_model=model, input_example=ld.X_train.sample(10))
+        # mlflow.log_params(params)
+
+        return model, ld.X_train
+
+
+sample_model, sample_x = None, None
+sample_model, sample_x = execute_sample_code(variant="demo")
+```
+
+# SelectKBest features
+
+* https://lifewithdata.com/2022/03/19/feature-selection-with-selectkbest-in-scikit-learn/
+
+```{python}
+#| colab: {base_uri: 'https://localhost:8080/', height: 530}
+#| executionInfo: {elapsed: 10, status: ok, timestamp: 1715652578103, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
+def select_features(k=10):
+    from sklearn.feature_selection import SelectKBest, chi2
+    from sklearn.preprocessing import MinMaxScaler
+
+    # Assuming X and y are your input features and target labels, respectively
+    # Select the top 10 features
+    selector = SelectKBest(score_func=chi2, k=k)
+
+    df = load_train()
+    X = df[[col for col in df.columns if col != "price"]]
+    y = df["price"]
+
+    sc = MinMaxScaler()
+    X_sc = sc.fit_transform(X)
+
+    # X_new contains the selected features
+    X_new = selector.fit_transform(X_sc, y)
+    X_new
+
+    kept_features = pd.DataFrame({"columns": X.columns, "Kept": selector.get_support()})
+    #     print(kept_features)
+
+    new_train_csv = X.iloc[:, selector.get_support()]
+    print(list(new_train_csv.columns))
+    return list(new_train_csv.columns), new_train_csv
+
+
+kept_features, train_csv_kept_features = select_features()
+train_csv_kept_features
+```
+
+```{python}
+_ = execute_sample_code(features=kept_features, variant="kbest10")
+```
+
+```{python}
+_ = execute_sample_code(features=select_features(k=5)[0], variant="kbest5")
+```
+
+```{python}
+_ = execute_sample_code(features=select_features(k=15)[0], variant="kbest15")
+```
+
+```{python}
+_ = execute_sample_code(features=select_features(k=20)[0], variant="kbest20")
+```
+
+# SkLearn Pipeline
+
+https://machinelearningmastery.com/feature-extraction-on-tabular-data/
+
+```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
+#| executionInfo: {elapsed: 808, status: ok, timestamp: 1715652594890, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
+
+train_data = load_train()
+test_data = load_test()
+
+df = train_data
+X = df[[col for col in df.columns if col != "price"]]
+# features = list(new_train_csv.columns)
+# X = df[features]
+y = df["price"]
+
+# X = X.astype('float')
+# y = LabelEncoder().fit_transform(y.astype('str'))
+
+print(X.shape, y.shape)
+```
+
+```{python}
+model = LogisticRegression(solver="liblinear")
+# cv = RepeatedKFold(n_splits=3, n_repeats=1, random_state=1)
+# scores = cross_val_score(model, X, y, scoring='accuracy', cv=cv, n_jobs=-1)
+
+# print('Accuracy: %.3f (%.3f)' % (mean(scores), std(scores)))
+```
+
+```{python}
+def show_results():
+    return results.sort_values(by="rmse")
+```
+
+```{python}
+show_results()
+```
+
+```{python}
+
+# test_data = predict_and_store('linear_regression_pipeline', model, X)
+# mean_absolute_error(train_data['price'], model.predict(X))
+```
+
+```{python}
+
+# transforms for the feature union
+transforms = list()
+transforms.append(("mms", MinMaxScaler()))
+transforms.append(("ss", StandardScaler()))
+transforms.append(("rs", RobustScaler()))
+transforms.append(
+    ("qt", QuantileTransformer(n_quantiles=100, output_distribution="normal"))
+)
+transforms.append(
+    ("kbd", KBinsDiscretizer(n_bins=10, encode="ordinal", strategy="uniform"))
+)
+transforms.append(("pca", PCA(n_components=7)))
+transforms.append(("svd", TruncatedSVD(n_components=7)))
+# create the feature union
+fu = FeatureUnion(transforms)
+```
+
+```{python}
+#| colab: {base_uri: 'https://localhost:8080/', height: 411}
+#| executionInfo: {elapsed: 2780843, status: error, timestamp: 1715655403732, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
+model = LogisticRegression(solver="liblinear")
+rfe = RFE(estimator=LogisticRegression(solver="liblinear"), n_features_to_select=8)
+steps = list()
+steps.append(("fu", fu))
+steps.append(("rfe", rfe))
+steps.append(("m", model))
+pipeline = Pipeline(steps=steps)
+
+# cv = RepeatedKFold(n_splits=3, n_repeats=1, random_state=1)
+# scores = cross_val_score(pipeline, X, y, scoring='accuracy', cv=cv, n_jobs=-1, verbose=1)
+# print('Accuracy: %.3f (%.3f)' % (mean(scores), std(scores)))
+```
+
+# Autogloun
+
+```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
+#| executionInfo: {elapsed: 1403, status: ok, timestamp: 1715656125340, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
+
+ld_autogluon = load_split(datetime_to_numeric=False, standard_scaler=False)
+
+X = ld_autogluon.X
+y = ld_autogluon.y
+```
+
+```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
+#| executionInfo: {elapsed: 705, status: ok, timestamp: 1715656130738, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
+label = "price"
+ld_autogluon.train_data[label].describe()
+```
+
+```{python}
+auto_ml_pipeline_feature_generator = AutoMLPipelineFeatureGenerator()
+auto_ml_pipeline_feature_generator.fit_transform(X=X, y=y)
+```
+
+```{python}
+with mlflow.start_run(
+    run_name="linear-automlfeatures",
+    tags={
+        "version": "v1",
+        "library": "sklearn",
+        "optimization": "AutoMLPipelineFeatureGenerator",
+    },
+    description="sklearn with AutoMLPipelineFeatureGenerator",
+):
+    model = LinearRegression().fit(
+        auto_ml_pipeline_feature_generator.transform(X=ld_autogluon.X_train),
+        ld_autogluon.y_train,
+    )
+    calculate_metrics(
+        ld_autogluon,
+        model,
+        method="linear",
+        variant="automlfeatures",
+        y_pred=model.predict(
+            auto_ml_pipeline_feature_generator.transform(X=ld_autogluon.X_test)
+        ),
+    )
+```
+
+```{python}
+#| colab: {background_save: true, base_uri: 'https://localhost:8080/'}
+
+predictor = None
+
+time_limit = 3600
+TIME_LIMIT_BASE=30
+presets = "medium_quality"
+
+
+def execute_autogluon(
+    time_limit=3600,
+    presets="medium_quality",
+    num_bag_folds=5,
+    num_bag_sets=1,
+    num_stack_levels=1,
+    calibrate_decision_threshold=True,
+):
+    with mlflow.start_run(
+        run_name=f"autogluon-{presets}",
+        tags={"version": "v1", "library": "autogluon", "optimization": presets},
+        description="autogluon",
+    ):
+        predictor = TabularPredictor(
+            label=label, problem_type="regression", path=f"AutogluonModels/{presets}"
+        ).fit(
+            ld_autogluon.train_data,
+            num_gpus=1,
+            presets=presets,
+            time_limit=time_limit,
+            dynamic_stacking=False,
+            num_bag_folds=num_bag_folds,
+            num_bag_sets=num_bag_sets,
+            num_stack_levels=num_stack_levels,
+            calibrate_decision_threshold=calibrate_decision_threshold,
+            feature_generator=auto_ml_pipeline_feature_generator,
+        )
+        calculate_metrics(
+            ld_autogluon,
+            model,
+            method="autogluon",
+            variant=presets,
+            y_pred=predictor.predict(
+                auto_ml_pipeline_feature_generator.transform(X=ld_autogluon.X_test)
+            ),
+        )
+        metrics = predictor.evaluate(ld_autogluon.train_data, silent=True)
+        mlflow.log_metrics(metrics)
+        predictor.leaderboard(ld_autogluon.train_data)
+        predict_and_store(f"autogluon_{presets}", predictor, ld_autogluon.test_data)
+        return predictor
+```
+
+```{python}
+medium_quality_predictor = execute_autogluon(presets="medium_quality", time_limit=TIME_LIMIT_BASE)
+medium_quality_predictor.evaluate(ld_autogluon.train_data, silent=True)
+```
+
+```{python}
+medium_quality_predictor.feature_importance(ld_autogluon.train_data, time_limit=TIME_LIMIT_BASE)
+```
+
+```{python}
+medium_quality_predictor.leaderboard(ld_autogluon.train_data)
+```
+
+```{python}
+high_quality_predictor = execute_autogluon(presets="high_quality", time_limit=TIME_LIMIT_BASE)
+high_quality_predictor.leaderboard(ld_autogluon.train_data)
+```
+
+```{python}
+best_quality_predictor = execute_autogluon(presets="best_quality", time_limit=TIME_LIMIT_BASE)
+best_quality_predictor.leaderboard(ld_autogluon.train_data)
+```
+
+```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
+#| executionInfo: {elapsed: 6115, status: ok, timestamp: 1715656755966, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
+# test_data = load_test(datetime_to_numeric=False)
+# df = auto_ml_pipeline_feature_generator.transform(test_data)
+# test_x = df.drop([], axis=1)
+# predict_and_store(f"autogluon_{presets}", medium_quality_predictor, test_x)
+```
+
+```{python}
+show_results()
+```
+
+# Optuna + Autogluon
+
+```{python}
+def execute_autogluon_optuna(
+    presets="medium_quality", time_limit=3600, n_trials=10, study_alias=""
+):
+    with mlflow.start_run(
+        run_name="autogluon_optuna",
+        tags={"version": "v1", "library": "autogluon", "optimization": "optuna"},
+        description="autogluon_optuna",
+    ) as parent_run:
+        mlflow.log_param("parent", "yes")
+
+        def objective(trial):
+            number = trial.number
+            with mlflow.start_run(
+                run_name=f"autogluon_optuna_trial_{number}",
+                description="autogluon_optuna_trial",
+                tags={
+                    "version": "v1",
+                    "library": "autogluon",
+                    "optimization": "optuna",
+                    "trial": "true",
+                },
+                nested=True,
+            ):
+                params = {
+                    "num_bag_folds": trial.suggest_int("num_bag_folds", 2, 5),
+                    "num_bag_sets": trial.suggest_int("num_bag_sets", 1, 5),
+                    "num_stack_levels": trial.suggest_int("num_stack_levels", 1, 5),
+                    "calibrate_decision_threshold": trial.suggest_categorical(
+                        "calibrate_decision_threshold", [False]
+                    ),
+                }
+                ld = load_split()
+
+                predictor = TabularPredictor(
+                    label=label,
+                    problem_type="regression",
+                    path=f"AutogluonModels/{study_alias}_{presets}_trial_{number}_n{n_trials}_{time_limit}s",
+                ).fit(
+                    ld_autogluon.train_data,
+                    num_gpus=1,
+                    presets=presets,
+                    time_limit=time_limit,
+                    dynamic_stacking=False,
+                    feature_generator=auto_ml_pipeline_feature_generator,
+                    **params,
+                )
+                model = predictor
+                y_pred = model.predict(ld.X_test)
+
+                calculate_metrics(ld, model, method="autogluon_optuna_trial", variant="trial")
+
+                return mean_squared_error(ld.y_test, y_pred)
+
+        study = optuna.create_study(
+            direction="minimize",
+            storage="sqlite:///optuna.sqlite3",
+            sampler=optuna.samplers.TPESampler(seed=42),
+            pruner=optuna.pruners.MedianPruner(),
+            study_name=f"autogluon-regression_{study_alias}_n{n_trials}_{time_limit}s_{presets}",
+            load_if_exists=True,
+        )
+        study.optimize(objective, n_trials=n_trials)
+
+        ld = load_split()
+        best_trial = study.best_trial
+        # model = TabularPredictor(label=label, problem_type="regression", path=f'AutogluonModels/optuna-{presets}').fit(
+        #     ld_autogluon.train_data,
+        #     num_gpus=1,
+        #     presets=presets,
+        #     time_limit=time_limit,
+        #     dynamic_stacking=False,
+        #     feature_generator=auto_ml_pipeline_feature_generator,
+        #     **study.best_params,
+        # )
+        number = best_trial.number
+        model = TabularPredictor.load(f"AutogluonModels/{study_alias}_{presets}_trial_{number}_n{n_trials}_{time_limit}s")
+        # model.fit(ld.X, ld.y)
+        # y_pred = model.predict(ld.X_test)
+
+        calculate_metrics(ld, model, method="autogluon-optuna", variant=f"{presets}_n{n_trials}_{time_limit}s_{study_alias}")
+        predict_and_store(f"autogluon-optuna_{presets}_{number}_n{n_trials}_{time_limit}s", model, ld_autogluon.test_data)
+
+        return model, study
+```
+
+```{python}
+N_TRIALS=2
+_, study = execute_autogluon_optuna(
+    presets="medium_quality", n_trials=N_TRIALS, time_limit=TIME_LIMIT_BASE, study_alias="first"
+)
+```
+
+```{python}
+_, hq_study = execute_autogluon_optuna(
+    presets="high_quality", n_trials=N_TRIALS, time_limit=TIME_LIMIT_BASE, study_alias="first"
+)
+```
+
+```{python}
+_, best_study = execute_autogluon_optuna(
+    presets="best_quality", n_trials=N_TRIALS, time_limit=TIME_LIMIT_BASE, study_alias="first"
+)
+```
+
+```{python}
+show_results()[0:20]
+```
+
+```{python}
+ov.plot_optimization_history(study)
+```
+
+```{python}
+ov.plot_intermediate_values(study)
+```
+
+```{python}
+ov.plot_timeline(study)
+```
+
+```{python}
+ov.plot_param_importances(
+    study, target=lambda t: t.duration.total_seconds(), target_name="duration"
+)
+```
+
+# XGBoost
+
+* https://github.com/dmlc/xgboost/blob/master/demo/guide-python/sklearn_examples.py
+
+```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
+#| executionInfo: {elapsed: 10611, status: ok, timestamp: 1715652341691, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
+!pip install xgboost
+
+# bst = xgboost.train(...)
+# config = bst.save_config()
+# print(config)
+```
+
+```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
+#| executionInfo: {elapsed: 1489, status: ok, timestamp: 1715655420922, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
+
+
+def execute_xgboost(features=None, variant="default"):
+    import numpy as np
+    import xgboost as xgb
+    from numpy import mean, std
+
+    with mlflow.start_run(
+        run_name=f"xgboost-{variant}",
+        tags={"version": "v1", "library": "xgboost", "optimization": "n/a"},
+        description="xgboost",
+    ):
+        ld = load_split(features=features)
+        train_data = ld.X_train
+
+        model = xgb.XGBRegressor(n_jobs=1, tree_method="hist", device="cuda")
+        model = model.fit(ld.X_train, ld.y_train)
+
+        calculate_metrics(ld, model, method="xgboost", variant=variant)
+
+        return model, ld.X_train
+```
+
+```{python}
+#| colab: {base_uri: 'https://localhost:8080/', height: 321}
+#| executionInfo: {elapsed: 5, status: error, timestamp: 1715655461028, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
+_ = execute_xgboost(features=select_features(k=10)[0], variant="kbest10")
+_ = execute_xgboost(features=select_features(k=20)[0], variant="kbest20")
+_ = execute_xgboost()
+
+show_results()
+```
+
+```{python}
+
+
+def execute_xgboost_cv(features=None, variant="default"):
+    import numpy as np
+    import xgboost as xgb
+    from numpy import mean, std
+    from sklearn.model_selection import RepeatedKFold, cross_val_score
+
+    with mlflow.start_run(
+        run_name=f"xgboost-cv-{variant}",
+        tags={"version": "v1", "library": "xgboost", "optimization": "cv"},
+        description="xgboost cross validation",
+    ):
+        ld = load_split(features=features)
+        train_data = ld.X_train
+
+        model = xgb.XGBRegressor(n_jobs=1, tree_method="hist", device="cuda")
+        model = model.fit(ld.X, ld.y)
+
+        cv = RepeatedKFold(n_splits=3, n_repeats=10, random_state=1)
+        scores = cross_val_score(model, ld.X, ld.y, cv=cv, n_jobs=-1, verbose=1)
+
+        calculate_metrics(ld, model, method="xgboost-cv", variant=variant)
+        mlflow.log_metrics({"cv-mean": mean(scores), "cv-std": std(scores)})
+
+        return model, ld.X
+
+
+# xgb_model = xgb.XGBRegressor(n_jobs=1, tree_method="hist", device="cuda")
+# xgb_model.fit(X, y)
+# cv = RepeatedKFold(n_splits=3, n_repeats=10, random_state=1)
+# scores = cross_val_score(xgb_model, X, y, cv=cv, n_jobs=-1, verbose=1)
+# print('Accuracy: %.3f (%.3f)' % (mean(scores), std(scores)))
+```
+
+```{python}
+_ = execute_xgboost_cv(features=select_features(k=10)[0], variant="kbest10")
+_ = execute_xgboost_cv(features=select_features(k=20)[0], variant="kbest20")
+_ = execute_xgboost_cv()
+```
+
+```{python}
+# test_data = load_test()
+# df = test_data
+# test_x = df[[col for col in df.columns if col != "price"]]
+# test_data = predict_and_store("xgboost", xgb_model, test_x)
+```
+
+```{python}
+show_results()
+```
+
+# Optuna + XGBoost
+
+```{python}
+print("Best parameters", xgboost_study.best_params)
+print("Best value", xgboost_study.best_value)
+print("Best trial", xgboost_study.best_trial)
+```
+
+```{python}
+xgboost_study = None
+xgboost_optuna_model = None
+def execute_xgboost_optuna(n_trials):
+    with mlflow.start_run(
+        run_name="xgboost_optuna",
+        tags={"version": "v1", "library": "xgboost", "optimization": "optuna"},
+        description="xgboost_optuna",
+    ) as parent_run:
+        mlflow.log_param("parent", "yes")
+    
+        def objective(trial):
+            number = trial.number
+            with mlflow.start_run(
+                run_name=f"xgboost_optuna_trial_{number}",
+                description="xgboost_optuna_trial",
+                tags={
+                    "version": "v1",
+                    "library": "xgboost",
+                    "optimization": "optuna",
+                    "trial": "true",
+                },
+                nested=True,
+            ):
+                param = {
+                    "max_depth": trial.suggest_int("max_depth", 1, 10),
+                    "learning_rate": trial.suggest_float("learning_rate", 0.01, 1.0),
+                    "n_estimators": trial.suggest_int("n_estimators", 50, 1000),
+                    "min_child_weight": trial.suggest_int("min_child_weight", 1, 10),
+                    "gamma": trial.suggest_float("gamma", 0.01, 1.0),
+                    "subsample": trial.suggest_float("subsample", 0.01, 1.0),
+                    "colsample_bytree": trial.suggest_float("colsample_bytree", 0.01, 1.0),
+                    "reg_alpha": trial.suggest_float("reg_alpha", 0.01, 1.0),
+                    "reg_lambda": trial.suggest_float("reg_lambda", 0.01, 1.0),
+                    "random_state": trial.suggest_int("random_state", 1, 1000),
+                    "device": "cuda",
+                    "tree_method": "hist",
+                }
+                ld = load_split()
+    
+                model = xgb.XGBRegressor(**param)
+                model = model.fit(ld.X_train, ld.y_train)
+                y_pred = model.predict(ld.X_test)
+    
+                calculate_metrics(ld, model, method="xgboost_optuna_trial")
+    
+                return mean_squared_error(ld.y_test, y_pred)
+    
+        study = optuna.create_study(
+            direction="minimize",
+            storage="sqlite:///optuna.sqlite3",
+            sampler=optuna.samplers.TPESampler(seed=42),
+            pruner=optuna.pruners.MedianPruner(),
+            study_name="xgboost-regression",
+            load_if_exists=True,
+        )
+        study.optimize(objective, n_trials=n_trials)
+    
+        ld = load_split()
+        model = xgboost.XGBRegressor(**study.best_params)
+        model.fit(ld.X, ld.y)
+        y_pred = model.predict(ld.X_test)
+        xgboost_study = study
+        xgboost_optuna_model = model
+    
+        calculate_metrics(ld, model, method="xgboost-optuna", variant=f"n{n_trials}")
+        predict_and_store("xgboost-optuna", xgboost_optuna_model, ld.test_data)
+        return model, study
+
+xgboost_optuna_model, xgboost_study = execute_xgboost_optuna(n_trials=N_TRIALS)
+```
+
+```{python}
+plot_intermediate_values(xgboost_study)
+```
+
+```{python}
+show_results()
+```
+
+# Optuna + LightGBM
+* https://practicaldatascience.co.uk/machine-learning/how-to-tune-a-lightgbmclassifier-model-with-optuna
+* https://lightgbm.readthedocs.io/en/latest/Parameters-Tuning.htmloptuna
+
+```{python}
+dataset = load_split(datetime_to_numeric=True)
+
+lightgbm_model = None
+def execute_lightgbm(features=None, variant="default"):
+    with mlflow.start_run(
+        run_name="lightgbm_optuna_baseline",
+        tags={"version": "v1", "library": "lightgbm", "optimization": "none"},
+        description="lightgbm_optuna_baseline",
+    ):
+        ld = load_split(features=features)
+        model = lgbm.LGBMRegressor()
+        model.fit(ld.X_train, ld.y_train)
+    
+        y_pred = model.predict(ld.X_test)
+        lightgbm_model = model
+    
+        calculate_metrics(ld, model, method="lightgbm", variant=variant)
+        return model
+```
+
+```{python}
+_ = execute_lightgbm(features=select_features(k=10)[0], variant="kbest10")
+_ = execute_lightgbm(features=select_features(k=20)[0], variant="kbest20")
+_ = execute_lightgbm()
+
+show_results()
+```
+
+```{python}
+lightgbm_study = None
+lightgbm_optuna_model = None
+def execute_lightgbm_optuna(n_trials):
+    with mlflow.start_run(
+        run_name="lightgbm_optuna",
+        tags={"version": "v1", "library": "lightgbm", "optimization": "optuna"},
+        description="lightgbm_optuna",
+    ) as parent_run:
+        mlflow.log_param("parent", "yes")
+    
+        def objective(trial):
+            number = trial.number
+            with mlflow.start_run(
+                run_name=f"lightgbm_optuna_trial_{number}",
+                description="lightgbm_optuna_trial",
+                tags={
+                    "version": "v1",
+                    "library": "lightgbm",
+                    "optimization": "optuna",
+                    "trial": "true",
+                },
+                nested=True,
+            ):
+                param = {
+                    "learning_rate": trial.suggest_float(
+                        "learning_rate", 1e-2, 0.25, log=True
+                    ),
+                    "max_depth": trial.suggest_int("max_depth", 1, 9),
+                    "n_estimators": trial.suggest_categorical(
+                        "n_estimators", [7000, 15000, 20000]
+                    ),
+                    "lambda_l1": trial.suggest_float("lambda_l1", 1e-8, 10.0, log=True),
+                    "lambda_l2": trial.suggest_float("lambda_l2", 1e-8, 10.0, log=True),
+                    "num_leaves": trial.suggest_int("num_leaves", 2, 256),
+                    "feature_fraction": trial.suggest_float("feature_fraction", 0.4, 1.0),
+                    "bagging_fraction": trial.suggest_float("bagging_fraction", 0.4, 1.0),
+                    "bagging_freq": trial.suggest_int("bagging_freq", 1, 7),
+                    "min_child_samples": trial.suggest_int("min_child_samples", 5, 100),
+                    "metric": "rmse",
+                    "verbose": -1,
+                }
+                
+                ld = load_split()
+                model = lgbm.LGBMRegressor(**param)
+                model = model.fit(ld.X_train, ld.y_train)
+                y_pred = model.predict(ld.X_test)
+    
+                calculate_metrics(ld, model, method="xgboost_optuna_trial")
+    
+                return mean_squared_error(ld.y_test, y_pred)
+    
+        study = optuna.create_study(
+            direction="minimize",
+            storage="sqlite:///optuna.sqlite3",
+            sampler=optuna.samplers.TPESampler(seed=42),
+            pruner=optuna.pruners.MedianPruner(),
+            study_name="lightgbm-regression",
+            load_if_exists=True,
+        )
+        study.optimize(objective, n_trials=n_trials)
+    
+        ld = load_split()
+        model = lgbm.LGBMRegressor(**study.best_params)
+        model.fit(ld.X, ld.y)
+        y_pred = model.predict(ld.X_test)
+        lightgbm_study = study
+        lightgbm_optuna_model = model
+
+        calculate_metrics(ld, model, method="lightgbm-optuna", variant=f"n{n_trials}")
+        predict_and_store("lightgbm-optuna", lightgbm_optuna_model, ld.test_data)
+        return model, study
+    
+```
+
+```{python}
+lightgbm_optuna_model, lightgbm_study = execute_lightgbm_optuna(n_trials=N_TRIALS)
+```
+
+```{python}
+show_results()
+```
+
+# cuML
+
+* https://docs.rapids.ai/api/cuml/stable/cuml_intro/#where-possible-match-the-scikit-learn-api
+
+
+# AutoXGB
+
+* https://github.com/abhishekkrthakur/autoxgb
+
+```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
+#| executionInfo: {elapsed: 91106, status: ok, timestamp: 1715655788636, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
+# !pip install autoxgb
+```
+
+```{python}
+#| colab: {base_uri: 'https://localhost:8080/', height: 748}
+#| executionInfo: {elapsed: 6300, status: error, timestamp: 1715652353084, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
+
+# from autoxgb import AutoXGB
+
+
+# # required parameters:
+# train_filename = "train.csv"
+# output = "autoxgb-output"
+
+# # optional parameters
+# test_filename = "test.csv"
+# task = None
+# idx = None
+# targets = ["price"]
+# features = None
+# categorical_features = None
+# use_gpu = False
+# num_folds = 5
+# seed = 42
+# num_trials = 100
+# time_limit = 360
+# fast = True
+
+# # Now its time to train the model!
+# axgb = AutoXGB(
+#     train_filename=train_filename,
+#     output=output,
+#     test_filename=test_filename,
+#     task=task,
+#     idx=idx,
+#     targets=targets,
+#     features=features,
+#     categorical_features=categorical_features,
+#     use_gpu=use_gpu,
+#     num_folds=num_folds,
+#     seed=seed,
+#     num_trials=num_trials,
+#     time_limit=time_limit,
+#     fast=fast,
+# )
+```
+
+```{python}
+# axgb.train()
+```
+
+
+# Sample
+
+```{python}
+sample_submission
+```
+
+```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
+#| executionInfo: {elapsed: 13615, status: ok, timestamp: 1715655684042, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
+! pip install -U pip
+```
+
+
+# Notebooks with GPU
+* https://www.kaggle.com/ (30 hours)
+* https://colab.research.google.com/ (free-tier w GPU)
+* https://www.paperspace.com/pricing (free-tier no GPU)
+* https://saturncloud.io/plans/saturn_cloud_plans/ (free-tier w GPU?, Waitlist)
+* https://deepnote.com/ (free-tier no GPU)
+* https://studiolab.sagemaker.aws/login (waitlist, free-tier with GPU)
+
+## MLFlow Proxy
+
+```{python}
+
+
+# Terminate open tunnels if exist
+ngrok.kill()
+
+# Setting the authtoken (optional)
+# Get your authtoken from https://dashboard.ngrok.com/auth
+NGROK_AUTH_TOKEN = "2VwE0ghPzEaPvlzIt9tdltGLFRZ_6nyxEMvYDUGjwfsW8A3xh"
+ngrok.set_auth_token(NGROK_AUTH_TOKEN)
+
+# Open an HTTPs tunnel on port 5000 for http://localhost:5000
+ngrok_tunnel = ngrok.connect(addr="5555", proto="http", bind_tls=True)
+print("MLflow Tracking UI:", ngrok_tunnel.public_url)
+```
+
+```{python}
+# run = wandb.init(project=WANDB_PROJECT)
+
+
+# ds_art = wandb.Artifact(name="original", type="dataset", description="Original dataset")
+
+# # Attach our processed data to the Artifact
+# ds_art.add_file(train_path)
+# ds_art.add_file(test_path)
+
+# table = wandb.Table(dataframe=load_train().sample(1000))
+# wandb.log({"dataset": table})
+
+
+# run.log_artifact(ds_art)
+
+# run.finish()
+```
