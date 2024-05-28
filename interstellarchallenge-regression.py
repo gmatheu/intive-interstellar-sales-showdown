@@ -24,7 +24,7 @@
 # #!pip install pandas numpy matplotlib xgboost scikit-learn tqdm
 # -
 
-# !pip install scikit-learn 
+# !pip install scikit-learn-intelex
 
 # ## Optuna
 #
@@ -567,7 +567,7 @@ with mlflow.start_run(
 predictor = None
 
 time_limit = 3600
-TIME_LIMIT_BASE=30
+TIME_LIMIT_BASE=1800
 presets = "medium_quality"
 
 
@@ -602,7 +602,7 @@ def execute_autogluon(
             ld_autogluon,
             model,
             method="autogluon",
-            variant=presets,
+            variant=f"{presets}_{time_limit}s",
             y_pred=predictor.predict(
                 auto_ml_pipeline_feature_generator.transform(X=ld_autogluon.X_test)
             ),
@@ -619,16 +619,16 @@ medium_quality_predictor = execute_autogluon(presets="medium_quality", time_limi
 medium_quality_predictor.evaluate(ld_autogluon.train_data, silent=True)
 # -
 
-medium_quality_predictor.feature_importance(ld_autogluon.train_data, time_limit=TIME_LIMIT_BASE)
+medium_quality_predictor.feature_importance(ld_autogluon.train_data, time_limit=int(0.5 * TIME_LIMIT_BASE))
 
 # + id="f92cd337-2337-40ef-9ccc-5c5b98dd1ef4"
 medium_quality_predictor.leaderboard(ld_autogluon.train_data)
 # -
 
-high_quality_predictor = execute_autogluon(presets="high_quality", time_limit=TIME_LIMIT_BASE)
+high_quality_predictor = execute_autogluon(presets="high_quality", time_limit=TIME_LIMIT_BASE * 2)
 high_quality_predictor.leaderboard(ld_autogluon.train_data)
 
-best_quality_predictor = execute_autogluon(presets="best_quality", time_limit=TIME_LIMIT_BASE)
+best_quality_predictor = execute_autogluon(presets="best_quality", time_limit=TIME_LIMIT_BASE * 3)
 best_quality_predictor.leaderboard(ld_autogluon.train_data)
 
 # + colab={"base_uri": "https://localhost:8080/"} executionInfo={"elapsed": 6115, "status": "ok", "timestamp": 1715656755966, "user": {"displayName": "Gonzalo Matheu", "userId": "07652169683581390753"}, "user_tz": 180} id="83lfUlnyGlCp" outputId="50a169a1-56a8-4d00-c060-579908002500"
@@ -729,18 +729,21 @@ def execute_autogluon_optuna(
         return model, study
 
 
-N_TRIALS=2
+N_TRIALS=1
 _, study = execute_autogluon_optuna(
     presets="medium_quality", n_trials=N_TRIALS, time_limit=TIME_LIMIT_BASE, study_alias="first"
 )
 
-_, hq_study = execute_autogluon_optuna(
-    presets="high_quality", n_trials=N_TRIALS, time_limit=TIME_LIMIT_BASE, study_alias="first"
-)
+# +
+# _, hq_study = execute_autogluon_optuna(
+#     presets="high_quality", n_trials=N_TRIALS * 2, time_limit=TIME_LIMIT_BASE * 2, study_alias="first"
+# )
 
-_, best_study = execute_autogluon_optuna(
-    presets="best_quality", n_trials=N_TRIALS, time_limit=TIME_LIMIT_BASE, study_alias="first"
-)
+# +
+# _, best_study = execute_autogluon_optuna(
+#     presets="best_quality", n_trials=N_TRIALS * 3, time_limit=TIME_LIMIT_BASE * 3, study_alias="first"
+# )
+# -
 
 show_results()[0:20]
 
@@ -839,22 +842,12 @@ _ = execute_xgboost_cv(features=select_features(k=20)[0], variant="kbest20")
 _ = execute_xgboost_cv()
 
 
-# + id="a1d92458-d46a-4372-a449-48285f7291be"
-# test_data = load_test()
-# df = test_data
-# test_x = df[[col for col in df.columns if col != "price"]]
-# test_data = predict_and_store("xgboost", xgb_model, test_x)
-
 # + id="1b0988c2-5760-4800-8fdb-a2e436c7a758"
 show_results()
 # -
 
 
 # # Optuna + XGBoost
-
-print("Best parameters", xgboost_study.best_params)
-print("Best value", xgboost_study.best_value)
-print("Best trial", xgboost_study.best_trial)
 
 # +
 xgboost_study = None
@@ -925,7 +918,7 @@ def execute_xgboost_optuna(n_trials):
         predict_and_store("xgboost-optuna", xgboost_optuna_model, ld.test_data)
         return model, study
 
-xgboost_optuna_model, xgboost_study = execute_xgboost_optuna(n_trials=N_TRIALS)
+xgboost_optuna_model, xgboost_study = execute_xgboost_optuna(n_trials=N_TRIALS * 5)
 # -
 
 plot_intermediate_values(xgboost_study)
@@ -964,8 +957,8 @@ _ = execute_lightgbm(features=select_features(k=20)[0], variant="kbest20")
 _ = execute_lightgbm()
 
 show_results()
+# -
 
-# +
 lightgbm_study = None
 lightgbm_optuna_model = None
 def execute_lightgbm_optuna(n_trials):
@@ -1037,11 +1030,9 @@ def execute_lightgbm_optuna(n_trials):
         calculate_metrics(ld, model, method="lightgbm-optuna", variant=f"n{n_trials}")
         predict_and_store("lightgbm-optuna", lightgbm_optuna_model, ld.test_data)
         return model, study
-    
 
-# -
 
-lightgbm_optuna_model, lightgbm_study = execute_lightgbm_optuna(n_trials=N_TRIALS)
+lightgbm_optuna_model, lightgbm_study = execute_lightgbm_optuna(n_trials=N_TRIALS * 5)
 
 show_results()
 
