@@ -39,7 +39,22 @@
 OPTUNA_DB = "sqlite:///optuna.sqlite3"
 get_ipython().system_raw(f"optuna-dashboard {OPTUNA_DB} &")
 
-# ## MLFlow
+# + [markdown] id="37978eaf-15a0-4760-a0d9-98ba2b0ed177"
+# # Autogluon
+# * https://auto.gluon.ai/stable/tutorials/tabular/tabular-feature-engineering.html
+# * https://auto.gluon.ai/stable/tutorials/tabular/advanced/index.html
+# -
+
+from autogluon.tabular import TabularDataset, TabularPredictor
+from autogluon.features.generators import AutoMLPipelineFeatureGenerator
+
+# + _kg_hide-output=true colab={"base_uri": "https://localhost:8080/"} executionInfo={"elapsed": 33805, "status": "ok", "timestamp": 1715657226953, "user": {"displayName": "Gonzalo Matheu", "userId": "07652169683581390753"}, "user_tz": 180} id="1ffc441d-3476-4a29-a16f-a11ba279d563" outputId="137016a8-5c4e-447e-8f82-04450f0f7229"
+# !pip install -U autogluon ipywidgets
+# # !pip uninstall lightgbm -y
+# # !pip install lightgbm --install-option=--gpu
+# -
+
+# # MLFlow
 # * https://www.kaggle.com/code/sharanharsoor/mlflow-end-to-end-ml-models
 
 # !pip install mlflow 'mxnet<=1.9.1' --quiet
@@ -49,6 +64,7 @@ get_ipython().system_raw("mlflow ui --port 5555 &")
 # +
 import mlflow
 
+mlflow.set_tracking_uri(uri="http://127.0.0.1:5555")
 mlflow.autolog()
 mlflow.lightgbm.autolog()
 mlflow.xgboost.autolog()
@@ -72,20 +88,6 @@ try:
 except ModuleNotFoundError:
     print("Falling back to environmenet variable")
     wandb.login()
-
-# + [markdown] id="37978eaf-15a0-4760-a0d9-98ba2b0ed177"
-# # Autogluon
-# * https://auto.gluon.ai/stable/tutorials/tabular/tabular-feature-engineering.html
-# * https://auto.gluon.ai/stable/tutorials/tabular/advanced/index.html
-
-# + _kg_hide-output=true colab={"base_uri": "https://localhost:8080/"} executionInfo={"elapsed": 33805, "status": "ok", "timestamp": 1715657226953, "user": {"displayName": "Gonzalo Matheu", "userId": "07652169683581390753"}, "user_tz": 180} id="1ffc441d-3476-4a29-a16f-a11ba279d563" outputId="137016a8-5c4e-447e-8f82-04450f0f7229"
-# !pip install -U autogluon ipywidgets
-# # !pip uninstall lightgbm -y
-# # !pip install lightgbm --install-option=--gpu
-# -
-
-from autogluon.tabular import TabularDataset, TabularPredictor
-from autogluon.features.generators import AutoMLPipelineFeatureGenerator
 
 # # Links
 #  * https://scikit-learn.org/stable/modules/generated/sklearn.metrics.mean_absolute_error.html
@@ -644,6 +646,9 @@ show_results()
 # # Optuna + Autogluon
 
 
+# +
+N_TRIALS=1
+
 def execute_autogluon_optuna(
     presets="medium_quality", time_limit=3600, n_trials=10, study_alias=""
 ):
@@ -729,7 +734,8 @@ def execute_autogluon_optuna(
         return model, study
 
 
-N_TRIALS=1
+# -
+
 _, study = execute_autogluon_optuna(
     presets="medium_quality", n_trials=N_TRIALS, time_limit=TIME_LIMIT_BASE, study_alias="first"
 )
@@ -1121,7 +1127,7 @@ sample_submission
 # * https://studiolab.sagemaker.aws/login (waitlist, free-tier with GPU)
 #
 
-# ## MLFlow Proxy
+# # MLFlow Proxy
 
 # +
 
