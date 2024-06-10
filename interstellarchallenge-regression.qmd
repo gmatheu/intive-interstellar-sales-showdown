@@ -15,8 +15,8 @@ jupyter:
 ---
 
 ```{python}
-%reload_ext jupyter_ai
-%load_ext jupyter_ai_magics
+# %reload_ext jupyter_ai
+# %load_ext jupyter_ai_magics
 ```
 
 ```{python}
@@ -25,12 +25,11 @@ jupyter:
 ```
 
 ```{python}
-#| colab: {base_uri: 'https://localhost:8080/'}
-#| executionInfo: {elapsed: 14607, status: ok, timestamp: 1715686115731, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
 #!pip install pandas numpy matplotlib xgboost scikit-learn tqdm
 ```
 
 ```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
 !pip install scikit-learn-intelex
 ```
 
@@ -56,17 +55,16 @@ get_ipython().system_raw(f"optuna-dashboard {OPTUNA_DB} &")
 * https://auto.gluon.ai/stable/tutorials/tabular/advanced/index.html
 
 ```{python}
-from autogluon.tabular import TabularDataset, TabularPredictor
-from autogluon.features.generators import AutoMLPipelineFeatureGenerator
-```
-
-```{python}
 #| _kg_hide-output: true
 #| colab: {base_uri: 'https://localhost:8080/'}
-#| executionInfo: {elapsed: 33805, status: ok, timestamp: 1715657226953, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
 !pip install -U autogluon ipywidgets
 # !pip uninstall lightgbm -y
 # !pip install lightgbm --install-option=--gpu
+```
+
+```{python}
+from autogluon.tabular import TabularDataset, TabularPredictor
+from autogluon.features.generators import AutoMLPipelineFeatureGenerator
 ```
 
 # MLFlow
@@ -79,6 +77,7 @@ get_ipython().system_raw("mlflow ui --port 5555 &")
 ```
 
 ```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
 import mlflow
 
 mlflow.set_tracking_uri(uri="http://127.0.0.1:5555")
@@ -86,12 +85,15 @@ mlflow.autolog()
 mlflow.lightgbm.autolog()
 mlflow.xgboost.autolog()
 # mlflow.gluon.autolog()
+
+# !mkdir -p /etc/OpenCL/vendors && echo "libnvidia-opencl.so.1" > /etc/OpenCL/vendors/nvidia.icd
 ```
 
 # Weight and Biases
 * https://colab.research.google.com/github/wandb/examples/blob/master/colabs/boosting/Credit_Scorecards_with_XGBoost_and_W%26B.ipynb#scrollTo=agAgfdIeuPdXj
 
 ```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
 !pip install --upgrade -q wandb
 ```
 
@@ -126,6 +128,7 @@ from pathlib import Path
 ```
 
 ```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
 import lightgbm
 import lightgbm as lgbm
 import mlflow
@@ -167,14 +170,17 @@ patch_sklearn()
 ```
 
 ```{python}
-#| colab: {base_uri: 'https://localhost:8080/', height: 373}
-#| executionInfo: {elapsed: 929, status: error, timestamp: 1715686147921, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
+#| colab: {base_uri: 'https://localhost:8080/', height: 444}
+from pathlib import Path
+
 dataset_name = "original"
 output_path = "."
-# test_path = '/kaggle/input/dataset/test.csv'
-# train_path = '/kaggle/input/dataset/train.csv'
+
 test_path = f"{dataset_name}_test.csv"
 train_path = f"{dataset_name}_train.csv"
+if not Path(test_path).exists():
+  test_path = f'/kaggle/input/{dataset_name}-dataset/{dataset_name}_test.csv'
+  train_path = f'/kaggle/input/{dataset_name}-dataset/{dataset_name}_train.csv'
 test_csv = pd.read_csv(test_path)
 train_csv = pd.read_csv(train_path)
 # sample_submission = pd.read_csv('sample_submission.csv')
@@ -182,36 +188,34 @@ train_csv
 ```
 
 ```{python}
+#| colab: {base_uri: 'https://localhost:8080/', height: 89}
 results = pd.DataFrame(columns=["dataset", "method", "variant", "rmse", "mse", "mae", "timestamp"])
 results
 ```
 
 ```{python}
-#| colab: {base_uri: 'https://localhost:8080/', height: 141}
-#| executionInfo: {elapsed: 6, status: error, timestamp: 1715686148819, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
+#| colab: {base_uri: 'https://localhost:8080/', height: 444}
 train_csv
 ```
 
 ```{python}
 #| colab: {base_uri: 'https://localhost:8080/'}
-#| executionInfo: {elapsed: 10, status: ok, timestamp: 1715652495729, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
 train_csv.columns
 ```
 
 ```{python}
 #| colab: {base_uri: 'https://localhost:8080/', height: 444}
-#| executionInfo: {elapsed: 8, status: ok, timestamp: 1715652495729, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
 test_csv
 ```
 
 ```{python}
 #| colab: {base_uri: 'https://localhost:8080/'}
-#| executionInfo: {elapsed: 7, status: ok, timestamp: 1715652495729, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
 all_features = list(test_csv.columns)
 test_csv.columns
 ```
 
 ```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
 patch_sklearn()
 
 warnings.filterwarnings(
@@ -236,6 +240,9 @@ warnings.filterwarnings(
 
 def load_numeric(file, datetime_to_numeric=True):
     csv = pd.read_csv(file)
+
+    csv["weight_distribution_y"] = pd.to_numeric(csv["weight_distribution_y"], errors="coerce")
+    csv = csv.dropna(subset=['weight_distribution_y'])
 
     csv["created_date"] = pd.to_datetime(csv["created_date"])
     csv["refitted_date"] = pd.to_datetime(csv["refitted_date"])
@@ -302,7 +309,8 @@ class LocalDataset:
     y_test: pd.DataFrame
     test_data: pd.DataFrame
     train_data: pd.DataFrame
-    features: list
+    features: list[str]
+    feature_generator: AutoMLPipelineFeatureGenerator
 
 
 @dataclass
@@ -323,10 +331,11 @@ def load_split(
     features=None,
     drop=None,
     standard_scaler=True,
+    feature_generator: AutoMLPipelineFeatureGenerator =None
 ):
     train_data = load_train(datetime_to_numeric=datetime_to_numeric)
     test_data = load_test(datetime_to_numeric=datetime_to_numeric)
-
+    
     df = train_data
     X = df.drop(["price"], axis=1)
     if drop is not None:
@@ -339,6 +348,16 @@ def load_split(
         test_data = test_data[features]
         print(f"Keeping features {features}")
     y = df["price"]
+    
+    if feature_generator is not None:
+        print(feature_generator)
+        X = feature_generator.fit_transform(X, y)
+        test_data = feature_generator.transform(test_data)
+        train_data = feature_generator.transform(X)
+        train_data["price"] = y
+        # test_data = feature_generator.transform(test_data)
+        print(feature_generator.print_generator_info())
+
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=test_size, random_state=1
@@ -356,10 +375,11 @@ def load_split(
         train_data = pd.DataFrame(
             scaler.transform(train_data[X.columns]), columns=X.columns
         )
+        
     train_data["price"] = y
 
     return LocalDataset(
-        X, y, X_train, X_test, y_train, y_test, test_data, train_data, features
+        X, y, X_train, X_test, y_train, y_test, test_data, train_data, features, feature_generator
     )
 
 
@@ -389,13 +409,26 @@ def calculate_metrics(ld: LocalDataset, model, method, variant="", y_pred=None):
     return results.sort_values(by="rmse")
 
 
-_ = load_split()
+ld = load_split()
+
+ld.train_data.info()
+```
+
+```{python}
+ld.X.info()
+```
+
+```{python}
+feature_generator = AutoMLPipelineFeatureGenerator()
+auto_ld = load_split(datetime_to_numeric=False, standard_scaler=False, feature_generator=feature_generator)
+auto_ld.X.info()
 ```
 
 # Sample code
 
 ```{python}
-def execute_sample_code(features=["cabins", "decks", "bathrooms", "radar"], variant=""):
+#| colab: {base_uri: 'https://localhost:8080/'}
+def execute_sample_code(features=["cabins", "decks", "bathrooms", "radar"], ld: LocalDataset = None, variant=""):
     import numpy as np
     import pandas as pd
     from sklearn.linear_model import LinearRegression
@@ -407,7 +440,8 @@ def execute_sample_code(features=["cabins", "decks", "bathrooms", "radar"], vari
         description="sklearn",
     ):
         # load training and test data
-        ld = load_split(features=features)
+        if ld is None:
+            ld = load_split(features=features)
         train_data = ld.X_train
         # choose 4 features and price as training target
         # features = ['cabins', 'decks', 'bathrooms', 'radar']
@@ -443,9 +477,8 @@ sample_model, sample_x = execute_sample_code(variant="demo")
 * https://lifewithdata.com/2022/03/19/feature-selection-with-selectkbest-in-scikit-learn/
 
 ```{python}
-#| colab: {base_uri: 'https://localhost:8080/', height: 530}
-#| executionInfo: {elapsed: 10, status: ok, timestamp: 1715652578103, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
-def select_features(k=10):
+#| colab: {base_uri: 'https://localhost:8080/', height: 945}
+def select_features(k=10, ld: LocalDataset = None):
     from sklearn.feature_selection import SelectKBest, chi2
     from sklearn.preprocessing import MinMaxScaler
 
@@ -454,15 +487,18 @@ def select_features(k=10):
     selector = SelectKBest(score_func=chi2, k=k)
 
     df = load_train()
+    if ld is not None:
+        df = ld.train_data
     X = df[[col for col in df.columns if col != "price"]]
     y = df["price"]
+
+    print(X.dtypes)
 
     sc = MinMaxScaler()
     X_sc = sc.fit_transform(X)
 
     # X_new contains the selected features
     X_new = selector.fit_transform(X_sc, y)
-    X_new
 
     kept_features = pd.DataFrame({"columns": X.columns, "Kept": selector.get_support()})
     #     print(kept_features)
@@ -477,19 +513,54 @@ train_csv_kept_features
 ```
 
 ```{python}
+feature_generator = AutoMLPipelineFeatureGenerator()
+select_features(ld=load_split(datetime_to_numeric=False, standard_scaler=False, feature_generator=feature_generator))[1]
+```
+
+```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
 _ = execute_sample_code(features=kept_features, variant="kbest10")
 ```
 
 ```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
+train_csv['weight_distribution_y'].describe()
+# pd.to_numeric(train_csv["weight_distribution_y"], errors="raise")
+
+train_csv.iloc[7578]
+
+train_csv.isnull().any(axis=0)
+df = train_csv
+df["weight_distribution_y"] = pd.to_numeric(df["weight_distribution_y"], errors="coerce")
+df = train_csv.dropna(subset=['weight_distribution_y'])
+df.info()
+```
+
+```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
 _ = execute_sample_code(features=select_features(k=5)[0], variant="kbest5")
 ```
 
 ```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
 _ = execute_sample_code(features=select_features(k=15)[0], variant="kbest15")
 ```
 
 ```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
 _ = execute_sample_code(features=select_features(k=20)[0], variant="kbest20")
+```
+
+```{python}
+feature_generator = AutoMLPipelineFeatureGenerator()
+ld = load_split(datetime_to_numeric=False, standard_scaler=False, feature_generator=feature_generator)
+_ = execute_sample_code(ld=ld, features=select_features(k=20, ld=ld)[0], variant="kbest20_autofeatures")
+```
+
+```{python}
+feature_generator = AutoMLPipelineFeatureGenerator()
+ld = load_split(datetime_to_numeric=False, standard_scaler=False, feature_generator=feature_generator)
+_ = execute_sample_code(ld=ld, features=select_features(k=28, ld=ld)[0], variant="kbest28_autofeatures")
 ```
 
 # SkLearn Pipeline
@@ -498,7 +569,6 @@ https://machinelearningmastery.com/feature-extraction-on-tabular-data/
 
 ```{python}
 #| colab: {base_uri: 'https://localhost:8080/'}
-#| executionInfo: {elapsed: 808, status: ok, timestamp: 1715652594890, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
 
 train_data = load_train()
 test_data = load_test()
@@ -529,6 +599,7 @@ def show_results():
 ```
 
 ```{python}
+#| colab: {base_uri: 'https://localhost:8080/', height: 206}
 show_results()
 ```
 
@@ -558,8 +629,6 @@ fu = FeatureUnion(transforms)
 ```
 
 ```{python}
-#| colab: {base_uri: 'https://localhost:8080/', height: 411}
-#| executionInfo: {elapsed: 2780843, status: error, timestamp: 1715655403732, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
 model = LogisticRegression(solver="liblinear")
 rfe = RFE(estimator=LogisticRegression(solver="liblinear"), n_features_to_select=8)
 steps = list()
@@ -577,7 +646,6 @@ pipeline = Pipeline(steps=steps)
 
 ```{python}
 #| colab: {base_uri: 'https://localhost:8080/'}
-#| executionInfo: {elapsed: 1403, status: ok, timestamp: 1715656125340, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
 
 ld_autogluon = load_split(datetime_to_numeric=False, standard_scaler=False)
 
@@ -587,17 +655,18 @@ y = ld_autogluon.y
 
 ```{python}
 #| colab: {base_uri: 'https://localhost:8080/'}
-#| executionInfo: {elapsed: 705, status: ok, timestamp: 1715656130738, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
 label = "price"
 ld_autogluon.train_data[label].describe()
 ```
 
 ```{python}
+#| colab: {base_uri: 'https://localhost:8080/', height: 444}
 auto_ml_pipeline_feature_generator = AutoMLPipelineFeatureGenerator()
 auto_ml_pipeline_feature_generator.fit_transform(X=X, y=y)
 ```
 
 ```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
 with mlflow.start_run(
     run_name="linear-automlfeatures",
     tags={
@@ -623,12 +692,11 @@ with mlflow.start_run(
 ```
 
 ```{python}
-#| colab: {background_save: true, base_uri: 'https://localhost:8080/'}
 
 predictor = None
 
 time_limit = 3600
-TIME_LIMIT_BASE=1800
+TIME_LIMIT_BASE=600
 presets = "medium_quality"
 
 
@@ -636,8 +704,8 @@ def execute_autogluon(
     time_limit=3600,
     presets="medium_quality",
     num_bag_folds=5,
-    num_bag_sets=1,
-    num_stack_levels=1,
+    num_bag_sets=3,
+    num_stack_levels=3,
     calibrate_decision_threshold=True,
 ):
     with mlflow.start_run(
@@ -645,20 +713,37 @@ def execute_autogluon(
         tags={"version": "v1", "library": "autogluon", "optimization": presets},
         description="autogluon",
     ):
+        hyperparameters = {
+          'GBM': {},
+          'XGB': {},
+          'CAT': {}
+        }
+
         predictor = TabularPredictor(
             label=label, problem_type="regression", path=f"AutogluonModels/{presets}"
         ).fit(
             ld_autogluon.train_data,
             num_gpus=1,
             presets=presets,
-            time_limit=time_limit,
+            time_limit=round(time_limit * .9),
             dynamic_stacking=False,
             num_bag_folds=num_bag_folds,
             num_bag_sets=num_bag_sets,
             num_stack_levels=num_stack_levels,
             calibrate_decision_threshold=calibrate_decision_threshold,
+            hyperparameters=hyperparameters,
             feature_generator=auto_ml_pipeline_feature_generator,
         )
+
+        extra_hyperparameters = {
+          'NN_TORCH': {},
+          'FASTAI': {}
+        }
+        predictor.fit_extra(
+            time_limit=round(time_limit * .1),
+            hyperparameters=extra_hyperparameters
+        )
+
         calculate_metrics(
             ld_autogluon,
             model,
@@ -676,15 +761,18 @@ def execute_autogluon(
 ```
 
 ```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
 medium_quality_predictor = execute_autogluon(presets="medium_quality", time_limit=TIME_LIMIT_BASE)
 medium_quality_predictor.evaluate(ld_autogluon.train_data, silent=True)
 ```
 
 ```{python}
+#| colab: {base_uri: 'https://localhost:8080/', height: 934}
 medium_quality_predictor.feature_importance(ld_autogluon.train_data, time_limit=int(0.5 * TIME_LIMIT_BASE))
 ```
 
 ```{python}
+#| colab: {base_uri: 'https://localhost:8080/', height: 195}
 medium_quality_predictor.leaderboard(ld_autogluon.train_data)
 ```
 
@@ -694,13 +782,12 @@ high_quality_predictor.leaderboard(ld_autogluon.train_data)
 ```
 
 ```{python}
+#| colab: {base_uri: 'https://localhost:8080/', height: 1000}
 best_quality_predictor = execute_autogluon(presets="best_quality", time_limit=TIME_LIMIT_BASE * 3)
 best_quality_predictor.leaderboard(ld_autogluon.train_data)
 ```
 
 ```{python}
-#| colab: {base_uri: 'https://localhost:8080/'}
-#| executionInfo: {elapsed: 6115, status: ok, timestamp: 1715656755966, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
 # test_data = load_test(datetime_to_numeric=False)
 # df = auto_ml_pipeline_feature_generator.transform(test_data)
 # test_x = df.drop([], axis=1)
@@ -708,13 +795,14 @@ best_quality_predictor.leaderboard(ld_autogluon.train_data)
 ```
 
 ```{python}
+#| colab: {base_uri: 'https://localhost:8080/', height: 332}
 show_results()
 ```
 
 # Optuna + Autogluon
 
 ```{python}
-N_TRIALS=1
+N_TRIALS=5
 
 def execute_autogluon_optuna(
     presets="medium_quality", time_limit=3600, n_trials=10, study_alias=""
@@ -749,6 +837,11 @@ def execute_autogluon_optuna(
                 }
                 ld = load_split()
 
+                hyperparameters = {
+                  'GBM': {},
+                  'XGB': {},
+                  'CAT': {},
+                }
                 predictor = TabularPredictor(
                     label=label,
                     problem_type="regression",
@@ -759,6 +852,7 @@ def execute_autogluon_optuna(
                     presets=presets,
                     time_limit=time_limit,
                     dynamic_stacking=False,
+                    hyperparameters=hyperparameters,
                     feature_generator=auto_ml_pipeline_feature_generator,
                     **params,
                 )
@@ -802,8 +896,9 @@ def execute_autogluon_optuna(
 ```
 
 ```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
 _, study = execute_autogluon_optuna(
-    presets="medium_quality", n_trials=N_TRIALS, time_limit=TIME_LIMIT_BASE, study_alias="first"
+    presets="medium_quality", n_trials=N_TRIALS, time_limit=round(TIME_LIMIT_BASE / 6), study_alias="first"
 )
 ```
 
@@ -847,7 +942,6 @@ ov.plot_param_importances(
 
 ```{python}
 #| colab: {base_uri: 'https://localhost:8080/'}
-#| executionInfo: {elapsed: 10611, status: ok, timestamp: 1715652341691, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
 !pip install xgboost
 
 # bst = xgboost.train(...)
@@ -856,8 +950,6 @@ ov.plot_param_importances(
 ```
 
 ```{python}
-#| colab: {base_uri: 'https://localhost:8080/'}
-#| executionInfo: {elapsed: 1489, status: ok, timestamp: 1715655420922, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
 
 
 def execute_xgboost(features=None, variant="default"):
@@ -883,7 +975,6 @@ def execute_xgboost(features=None, variant="default"):
 
 ```{python}
 #| colab: {base_uri: 'https://localhost:8080/', height: 321}
-#| executionInfo: {elapsed: 5, status: error, timestamp: 1715655461028, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
 _ = execute_xgboost(features=select_features(k=10)[0], variant="kbest10")
 _ = execute_xgboost(features=select_features(k=20)[0], variant="kbest20")
 _ = execute_xgboost()
@@ -940,6 +1031,7 @@ show_results()
 # Optuna + XGBoost
 
 ```{python}
+N_TRIALS=30
 xgboost_study = None
 xgboost_optuna_model = None
 def execute_xgboost_optuna(n_trials):
@@ -949,7 +1041,7 @@ def execute_xgboost_optuna(n_trials):
         description="xgboost_optuna",
     ) as parent_run:
         mlflow.log_param("parent", "yes")
-    
+
         def objective(trial):
             number = trial.number
             with mlflow.start_run(
@@ -975,18 +1067,18 @@ def execute_xgboost_optuna(n_trials):
                     "reg_lambda": trial.suggest_float("reg_lambda", 0.01, 1.0),
                     "random_state": trial.suggest_int("random_state", 1, 1000),
                     "device": "cuda",
-                    "tree_method": "hist",
+                    "tree_method": "gpu_hist",
                 }
                 ld = load_split()
-    
+
                 model = xgb.XGBRegressor(**param)
                 model = model.fit(ld.X_train, ld.y_train)
                 y_pred = model.predict(ld.X_test)
-    
+
                 calculate_metrics(ld, model, method="xgboost_optuna_trial")
-    
+
                 return mean_squared_error(ld.y_test, y_pred)
-    
+
         study = optuna.create_study(
             direction="minimize",
             storage="sqlite:///optuna.sqlite3",
@@ -996,14 +1088,14 @@ def execute_xgboost_optuna(n_trials):
             load_if_exists=True,
         )
         study.optimize(objective, n_trials=n_trials)
-    
+
         ld = load_split()
         model = xgboost.XGBRegressor(**study.best_params)
         model.fit(ld.X, ld.y)
         y_pred = model.predict(ld.X_test)
         xgboost_study = study
         xgboost_optuna_model = model
-    
+
         calculate_metrics(ld, model, method="xgboost-optuna", variant=f"n{n_trials}")
         predict_and_store("xgboost-optuna", xgboost_optuna_model, ld.test_data)
         return model, study
@@ -1036,10 +1128,10 @@ def execute_lightgbm(features=None, variant="default"):
         ld = load_split(features=features)
         model = lgbm.LGBMRegressor()
         model.fit(ld.X_train, ld.y_train)
-    
+
         y_pred = model.predict(ld.X_test)
         lightgbm_model = model
-    
+
         calculate_metrics(ld, model, method="lightgbm", variant=variant)
         return model
 ```
@@ -1062,7 +1154,7 @@ def execute_lightgbm_optuna(n_trials):
         description="lightgbm_optuna",
     ) as parent_run:
         mlflow.log_param("parent", "yes")
-    
+
         def objective(trial):
             number = trial.number
             with mlflow.start_run(
@@ -1077,6 +1169,7 @@ def execute_lightgbm_optuna(n_trials):
                 nested=True,
             ):
                 param = {
+                    "objective": "regression",
                     "learning_rate": trial.suggest_float(
                         "learning_rate", 1e-2, 0.25, log=True
                     ),
@@ -1093,17 +1186,20 @@ def execute_lightgbm_optuna(n_trials):
                     "min_child_samples": trial.suggest_int("min_child_samples", 5, 100),
                     "metric": "rmse",
                     "verbose": -1,
+                    "device": "gpu",
+                    "gpu_platform_id": 0,
+                    "gpu_device_id": 0,
                 }
-                
+
                 ld = load_split()
                 model = lgbm.LGBMRegressor(**param)
                 model = model.fit(ld.X_train, ld.y_train)
                 y_pred = model.predict(ld.X_test)
-    
+
                 calculate_metrics(ld, model, method="xgboost_optuna_trial")
-    
+
                 return mean_squared_error(ld.y_test, y_pred)
-    
+
         study = optuna.create_study(
             direction="minimize",
             storage="sqlite:///optuna.sqlite3",
@@ -1113,7 +1209,7 @@ def execute_lightgbm_optuna(n_trials):
             load_if_exists=True,
         )
         study.optimize(objective, n_trials=n_trials)
-    
+
         ld = load_split()
         model = lgbm.LGBMRegressor(**study.best_params)
         model.fit(ld.X, ld.y)
@@ -1144,14 +1240,10 @@ show_results()
 * https://github.com/abhishekkrthakur/autoxgb
 
 ```{python}
-#| colab: {base_uri: 'https://localhost:8080/'}
-#| executionInfo: {elapsed: 91106, status: ok, timestamp: 1715655788636, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
 # !pip install autoxgb
 ```
 
 ```{python}
-#| colab: {base_uri: 'https://localhost:8080/', height: 748}
-#| executionInfo: {elapsed: 6300, status: error, timestamp: 1715652353084, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
 
 # from autoxgb import AutoXGB
 
@@ -1205,8 +1297,6 @@ sample_submission
 ```
 
 ```{python}
-#| colab: {base_uri: 'https://localhost:8080/'}
-#| executionInfo: {elapsed: 13615, status: ok, timestamp: 1715655684042, user: {displayName: Gonzalo Matheu, userId: 07652169683581390753}, user_tz: 180}
 ! pip install -U pip
 ```
 
@@ -1255,3 +1345,43 @@ print("MLflow Tracking UI:", ngrok_tunnel.public_url)
 
 # run.finish()
 ```
+
+```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
+
+!apt-get install -y libboost-all-dev
+!pip uninstall -y lightgbm
+!git clone --recursive https://github.com/Microsoft/LightGBM
+
+```
+
+```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
+%%bash
+cd LightGBM
+rm -r build
+mkdir build
+cd build
+cmake -DUSE_GPU=1 -DOpenCL_LIBRARY=/usr/local/cuda/lib64/libOpenCL.so -DOpenCL_INCLUDE_DIR=/usr/local/cuda/include/ ..
+make -j$(nproc)
+```
+
+```{python}
+#| colab: {base_uri: 'https://localhost:8080/'}
+%%bash
+cd LightGBM/python-package/;
+pip uninstall -y lightgbm
+pip install lightgbm \
+  --config-settings=cmake.define.USE_GPU=ON \
+  --config-settings=cmake.define.OpenCL_INCLUDE_DIR="/usr/local/cuda/include/" \
+  --config-settings=cmake.define.OpenCL_LIBRARY="/usr/local/cuda/lib64/libOpenCL.so"
+```
+
+```{python}
+!mkdir -p /etc/OpenCL/vendors && echo "libnvidia-opencl.so.1" > /etc/OpenCL/vendors/nvidia.icd
+```
+
+```{python}
+!rm -r LightGBM
+```
+
