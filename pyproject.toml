@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "intive-interstellar-sales-showdown"
+version = "0.1.0"
+description = ""
+authors = ["Gonzalo Matheu (framework) <gonzalo.matheu@intive.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">3.11,<3.12"
+autogluon = "^1.1.0"
+xgboost = "^2.0.3"
+scikit-learn-intelex = "^2024.4.0"
+optuna-dashboard = "^0.15.1"
+
+[tool.poetry.group.dev.dependencies]
+ipython = "^8.24.0"
+jupyter = "^1.0.0"
+jupytext = "^1.16.2"
+jupyter-ai = "^2.16.0"
+langchain-anthropic = "^0.1.13"
+langchain-openai = "^0.1.7"
+jupyterlab-optuna = "^0.1.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
